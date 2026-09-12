@@ -172,12 +172,14 @@ writeFileSync(
 		regions: ["iad1"],
 	}),
 );
+const { crons } = JSON.parse(readFileSync(join(apiDir, "vercel.json"), "utf8"));
+
 writeFileSync(
 	join(outDir, "config.json"),
 	JSON.stringify({
 		version: 3,
 		routes: [{ src: "/(.*)", dest: "/api/index" }],
-		crons: [{ path: "/internal/sync/google", schedule: "*/5 * * * *" }],
+		crons,
 	}),
 );
 

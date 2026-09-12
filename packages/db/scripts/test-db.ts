@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { parseEnv } from "@crm/env";
 import pg from "pg";
 
 const SCHEMA = join(dirname(import.meta.dirname), "prisma", "schema.prisma");
@@ -28,7 +29,7 @@ if (!name.endsWith("_test")) {
 await create(url, name, process.argv.includes("--reset"));
 migrate(url);
 
-if (!process.env.TEST_DATABASE_URL) {
+if (!process.env.TEST_DATABASE_URL && !fromRootEnv("TEST_DATABASE_URL")) {
 	console.log(
 		[
 			"",
@@ -179,10 +180,11 @@ function migrate(target: string): void {
 }
 
 function resolve(): string | null {
-	const explicit = process.env.TEST_DATABASE_URL;
+	const explicit =
+		process.env.TEST_DATABASE_URL ?? fromRootEnv("TEST_DATABASE_URL");
 	if (explicit) return explicit;
 
-	const live = process.env.DATABASE_URL;
+	const live = process.env.DATABASE_URL ?? fromRootEnv("DATABASE_URL");
 	if (!live) return null;
 
 	try {
@@ -209,4 +211,35 @@ function databaseName(value: string): string {
 function fail(lines: string[]): never {
 	console.error(["", ...lines.map((line) => `  ${line}`), ""].join("\n"));
 	process.exit(1);
+}
+
+function fromRootEnv(name: string): string | undefined {
+	const root = workspaceRoot();
+	if (!root) return undefined;
+
+	for (const file of [".env.local", ".env"]) {
+		try {
+			const value = parseEnv(readFileSync(join(root, file), "utf8"))[name];
+			if (value) return value;
+		} catch {}
+	}
+
+	return undefined;
+}
+
+function workspaceRoot(): string | null {
+	let directory = process.cwd();
+
+	while (true) {
+		try {
+			const manifest = JSON.parse(
+				readFileSync(join(directory, "package.json"), "utf8"),
+			) as { workspaces?: unknown };
+			if (manifest.workspaces) return directory;
+		} catch {}
+
+		const parent = dirname(directory);
+		if (parent === directory) return null;
+		directory = parent;
+	}
 }
